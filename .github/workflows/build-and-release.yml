@@ -103,9 +103,8 @@ jobs:
         if: steps.check.outputs.needs_build == 'true'
         run: |
           cd zeal-src/build
-          zip -r "../../../Zeal-${{ steps.upstream.outputs.tag }}.zip" Zeal.app
-          cd ../..
-          ls -la Zeal-*.zip
+          zip -r "${GITHUB_WORKSPACE}/Zeal-${{ steps.upstream.outputs.tag }}.zip" Zeal.app
+          ls -la "${GITHUB_WORKSPACE}/Zeal-"*.zip
 
       - name: Create release
         if: steps.check.outputs.needs_build == 'true'
