@@ -1,0 +1,143 @@
+name: Build and Release Zeal
+
+on:
+  schedule:
+    # Check for new releases daily at 6:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+    inputs:
+      force:
+        description: 'Force build even if version exists'
+        required: false
+        default: 'false'
+
+jobs:
+  check-and-build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Get latest release from upstream
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get latest release from zealdocs/zeal
+          UPSTREAM_TAG=$(gh api repos/zealdocs/zeal/releases/latest --jq '.tag_name')
+          echo "tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
+          echo "Upstream latest release: ${UPSTREAM_TAG}"
+
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.upstream.outputs.tag }}"
+          FORCE="${{ github.event.inputs.force }}"
+          
+          if [[ "$FORCE" == "true" ]]; then
+            echo "Force build requested"
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if we already have a release for this version
+          if gh release view "v${VERSION}" 2>/dev/null; then
+            echo "Release v${VERSION} already exists in this repo"
+            echo "needs_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release v${VERSION} does not exist, will build"
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          brew install qt@6 libarchive vulkan-headers
+          
+          QT_PREFIX="$(brew --prefix qt@6)"
+          LIBARCHIVE_PREFIX="$(brew --prefix libarchive)"
+          VULKAN_HEADERS_PREFIX="$(brew --prefix vulkan-headers)"
+          
+          echo "QT_PREFIX=${QT_PREFIX}" >> $GITHUB_ENV
+          echo "LIBARCHIVE_PREFIX=${LIBARCHIVE_PREFIX}" >> $GITHUB_ENV
+          echo "VULKAN_HEADERS_PREFIX=${VULKAN_HEADERS_PREFIX}" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=${QT_PREFIX}:${LIBARCHIVE_PREFIX}:${VULKAN_HEADERS_PREFIX}" >> $GITHUB_ENV
+
+      - name: Clone upstream Zeal repository
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          git clone https://github.com/zealdocs/zeal.git zeal-src
+          cd zeal-src
+          git checkout "tags/${{ steps.upstream.outputs.tag }}" -B "build-${{ steps.upstream.outputs.tag }}"
+
+      - name: Configure CMake
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          cd zeal-src
+          cmake -S . -B build \
+            -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Zeal
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          cd zeal-src
+          cmake --build build --config Release --parallel
+
+      - name: Verify app bundle
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          if [[ ! -d "zeal-src/build/Zeal.app" ]]; then
+            echo "Error: Zeal.app not found in build directory"
+            exit 1
+          fi
+          echo "App bundle created successfully"
+
+      - name: Create ZIP archive
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          cd zeal-src/build
+          zip -r "../../../Zeal-${{ steps.upstream.outputs.tag }}.zip" Zeal.app
+          cd ../..
+          ls -la Zeal-*.zip
+
+      - name: Create release
+        if: steps.check.outputs.needs_build == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.upstream.outputs.tag }}"
+          
+          gh release create "v${VERSION}" \
+            --title "Zeal ${VERSION}" \
+            --notes "Automated build of Zeal ${VERSION} from upstream [zealdocs/zeal](https://github.com/zealdocs/zeal).
+
+            ## Download
+            Download \`Zeal-${VERSION}.zip\`, extract, and move \`Zeal.app\` to your Applications folder.
+
+            ## Requirements
+            - macOS 11.0 or later
+            - Apple Silicon (M1/M2/M3) or Intel Mac" \
+            "Zeal-${VERSION}.zip"
+
+      - name: Summary
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          echo "## Build Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Released Zeal ${{ steps.upstream.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download: [Zeal-${{ steps.upstream.outputs.tag }}.zip](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.upstream.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+
+      - name: No build needed
+        if: steps.check.outputs.needs_build == 'false'
+        run: |
+          echo "## No Build Needed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Upstream version ${{ steps.upstream.outputs.tag }} is already built and released." >> $GITHUB_STEP_SUMMARY
