@@ -28,7 +28,7 @@ Options:
 
 ## macOS Compilation Fix
 
-A patch is included to fix a compilation error in `QxtGlobalShortcut` on macOS. Apply it in GitHub Actions after cloning:
+A patch is included to fix a compilation error in `QxtGlobalShortcut` on macOS. Apply it after cloning:
 
 ```yaml
 - name: Apply macOS compilation fix
