@@ -26,6 +26,17 @@ Options:
 - `--repo-dir PATH` - Override repo location
 - `--app-dest PATH` - Override app install destination
 
+## macOS Compilation Fix
+
+A patch is included to fix a compilation error in `QxtGlobalShortcut` on macOS. Apply it in GitHub Actions after cloning:
+
+```yaml
+- name: Apply macOS compilation fix
+  run: |
+    cd zeal-src
+    git apply ../qxtglobalshortcut-macos-fix.patch
+```
+
 ## Requirements
 
 - macOS 11.0 or later

@@ -1,0 +1,22 @@
+diff --git a/src/libs/ui/qxtglobalshortcut/qxtglobalshortcut_p.h b/src/libs/ui/qxtglobalshortcut/qxtglobalshortcut_p.h
+index c5e5e34..be75f55 100644
+--- a/src/libs/ui/qxtglobalshortcut/qxtglobalshortcut_p.h
++++ b/src/libs/ui/qxtglobalshortcut/qxtglobalshortcut_p.h
+@@ -52,6 +52,9 @@ class QxtGlobalShortcutPrivate : public QAbstractNativeEventFilter
+ 
+     QxtGlobalShortcut *q_ptr = nullptr;
+     Q_DECLARE_PUBLIC(QxtGlobalShortcut)
++public:
++    static bool activateShortcut(quint32 nativeKey, quint32 nativeMods);
++
+ protected:
+     explicit QxtGlobalShortcutPrivate(QxtGlobalShortcut *qq);
+     ~QxtGlobalShortcutPrivate() override;
+@@ -73,7 +76,6 @@ protected:
+     bool nativeEventFilter(const QByteArray &eventType, void *message, NativeEventFilterResult *result) override;
+ 
+     static bool isSupported();
+-    static bool activateShortcut(quint32 nativeKey, quint32 nativeMods);
+ 
+ private:
+     static quint32 nativeKeycode(Qt::Key keycode, quint32 &extraNativeMods);
