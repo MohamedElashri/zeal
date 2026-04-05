@@ -79,6 +79,12 @@ jobs:
           cd zeal-src
           git checkout "tags/${{ steps.upstream.outputs.tag }}" -B "build-${{ steps.upstream.outputs.tag }}"
 
+      - name: Apply macOS compilation fix
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          cd zeal-src
+          git apply ../qxtglobalshortcut-macos-fix.patch
+
       - name: Configure CMake
         if: steps.check.outputs.needs_build == 'true'
         run: |
