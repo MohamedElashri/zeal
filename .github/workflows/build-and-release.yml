@@ -45,6 +45,11 @@ jobs:
           
           if [[ "$FORCE" == "true" ]]; then
             echo "Force build requested"
+            if gh release view "v${VERSION}" 2>/dev/null; then
+              echo "Deleting existing release v${VERSION}"
+              gh release delete "v${VERSION}" --yes
+              git push origin --delete "v${VERSION}" 2>/dev/null || true
+            fi
             echo "needs_build=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -111,11 +116,36 @@ jobs:
       - name: Deploy Qt dependencies
         if: steps.check.outputs.needs_build == 'true'
         run: |
-          "${{ env.QT_PREFIX }}/bin/macdeployqt" zeal-src/build/Zeal.app
+          # Collect lib paths from all installed Qt component formulae
+          LIBPATHS=""
+          while IFS= read -r formula; do
+            lib_dir="$(brew --prefix "$formula" 2>/dev/null)/lib"
+            [[ -d "$lib_dir" ]] && LIBPATHS="$LIBPATHS -libpath=$lib_dir"
+          done < <(brew list --formula | grep -E "^qt")
+          # Add common dependency lib paths
+          for dep in brotli webp zstd md4c dbus graphite2 libarchive; do
+            lib_dir="$(brew --prefix "$dep" 2>/dev/null)/lib"
+            [[ -d "$lib_dir" ]] && LIBPATHS="$LIBPATHS -libpath=$lib_dir"
+          done
+          # macdeployqt may exit non-zero on codesign verification after patching install names;
+          # that is non-fatal — we re-sign everything in the next step.
+          "${{ env.QT_PREFIX }}/bin/macdeployqt" zeal-src/build/Zeal.app $LIBPATHS || true
+          # Verify critical frameworks were actually copied
+          for framework in QtCore QtWidgets; do
+            if [[ ! -d "zeal-src/build/Zeal.app/Contents/Frameworks/${framework}.framework" ]]; then
+              echo "ERROR: Missing critical framework: ${framework}"
+              exit 1
+            fi
+          done
 
       - name: Ad-hoc code sign
         if: steps.check.outputs.needs_build == 'true'
         run: |
+          # Re-sign all dylibs first: macdeployqt uses install_name_tool which invalidates
+          # existing Homebrew signatures on copied dylibs.
+          find zeal-src/build/Zeal.app -name "*.dylib" \
+            -exec codesign --force --sign - {} \;
+          # Now sign the full app bundle (handles frameworks and the main executable)
           codesign --force --deep --sign - zeal-src/build/Zeal.app
 
       - name: Create ZIP archive
