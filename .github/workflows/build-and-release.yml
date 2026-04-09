@@ -108,6 +108,16 @@ jobs:
           fi
           echo "App bundle created successfully"
 
+      - name: Deploy Qt dependencies
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          "${{ env.QT_PREFIX }}/bin/macdeployqt" zeal-src/build/Zeal.app
+
+      - name: Ad-hoc code sign
+        if: steps.check.outputs.needs_build == 'true'
+        run: |
+          codesign --force --deep --sign - zeal-src/build/Zeal.app
+
       - name: Create ZIP archive
         if: steps.check.outputs.needs_build == 'true'
         run: |
@@ -129,9 +139,15 @@ jobs:
             ## Download
             Download \`Zeal-${VERSION}.zip\`, extract, and move \`Zeal.app\` to your Applications folder.
 
+            ## Opening the app
+            This build is ad-hoc signed but not notarized by Apple. On first launch macOS may warn about an unidentified developer. To open it:
+            - **Right-click** \`Zeal.app\` → **Open** → click **Open** in the dialog.
+            - Alternatively, run in Terminal: \`xattr -rd com.apple.quarantine /Applications/Zeal.app\`
+
             ## Requirements
             - macOS 11.0 or later
-            - Apple Silicon (M1/M2/M3) or Intel Mac" \
+            - Apple Silicon (M1/M2/M3) or Intel Mac
+            - No Qt installation required (frameworks are bundled)" \
             "Zeal-${VERSION}.zip"
 
       - name: Summary
